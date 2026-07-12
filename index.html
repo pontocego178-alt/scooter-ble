@@ -279,6 +279,7 @@
     </div>
     <button class="primary unlock-btn" id="unlockBtn" disabled>Aplicar modo 3 (desbloqueado) e destravar</button>
     <button class="ghost unlock-btn" id="holdBtn" disabled style="margin-top:8px;">Manter comando (anti auto-revert)</button>
+    <button class="ghost unlock-btn" id="pausePollBtn" disabled style="margin-top:8px;">Pausar leitura automática (A5 04 01 AA)</button>
   </div>
 
   <div class="panel">
@@ -335,6 +336,7 @@ let device, server, txChar, rxChar;
 let state = { battery:null, speed:null, totalDist:null, tripDist:null, rideTime:null,
               lock:0, kmMph:1, light:0, speedlimit:0, mode:0, xh:0, gear:0, fault:0 };
 let pollTimer = null;
+let pollPaused = true; // por padrão NÃO fica lendo status sozinho — notificações já chegam passivamente
 
 const $ = id => document.getElementById(id);
 const logEl = $('console');
@@ -389,6 +391,7 @@ function setConnected(isConnected){
   $('connectBtn').textContent = isConnected ? 'Desconectar' : 'Conectar';
   $('unlockBtn').disabled = !isConnected;
   $('holdBtn').disabled = !isConnected;
+  $('pausePollBtn').disabled = !isConnected;
   document.querySelectorAll('.speed-btn').forEach(b => b.disabled = !isConnected);
   document.querySelectorAll('.switch').forEach(s => s.style.pointerEvents = isConnected ? 'auto' : 'none');
 }
@@ -415,9 +418,10 @@ async function connect(){
     rxChar.addEventListener('characteristicvaluechanged', onNotify);
 
     setConnected(true);
-    log('conectado. iniciando leitura periódica.', 'sys');
-    requestStatus();
-    pollTimer = setInterval(requestStatus, 1500);
+    log('conectado. notificações chegam sozinhas — leitura automática desativada por padrão (ela parecia causar o revert dos comandos).', 'sys');
+    requestStatus(); // uma leitura inicial só, pra popular a tela
+    pollPaused = true;
+    $('pausePollBtn').textContent = 'Ativar leitura automática (não recomendado)';
   } catch(err){
     log('erro ao conectar: ' + err.message, 'err');
   }
@@ -672,6 +676,21 @@ $('unlockBtn').addEventListener('click', () => {
 
 $('holdBtn').addEventListener('click', () => {
   if (holdTimer) stopHold(); else startHold();
+});
+
+$('pausePollBtn').addEventListener('click', () => {
+  pollPaused = !pollPaused;
+  if (pollPaused) {
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+    log('⏸ leitura automática (A5 04 01 AA) pausada — só recebendo notificações passivas agora.', 'sys');
+    $('pausePollBtn').textContent = 'Retomar leitura automática';
+    $('pausePollBtn').classList.add('primary');
+  } else {
+    pollTimer = setInterval(requestStatus, 1500);
+    log('▶ leitura automática retomada.', 'sys');
+    $('pausePollBtn').textContent = 'Pausar leitura automática (A5 04 01 AA)';
+    $('pausePollBtn').classList.remove('primary');
+  }
 });
 
 function wireToggle(id, key){
