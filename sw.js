@@ -1,5 +1,5 @@
-const CACHE = 'scooter-ble-v3'; // bump força descarte do cache antigo
-const ASSETS = ['/index.html', '/style.css', '/app.js', '/manifest.json', '/icon-192.png', '/icon-512.png'];
+const CACHE = 'scooter-ble-v5'; // bump força descarte do cache antigo
+const ASSETS = ['./index.html', './app.js', './manifest.json', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(ASSETS)));
