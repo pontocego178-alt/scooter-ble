@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DNTOO // Painel de Controle BLE</title>
+<link rel="manifest" href="/manifest.json">
+<link rel="icon" href="/icon-192.png">
+<link rel="apple-touch-icon" href="/icon-192.png">
+<meta name="theme-color" content="#0b0e0c">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0b0e0c;
+    --panel:#12160f;
+    --panel-2:#171c14;
+    --line:#262b22;
+    --text:#e8ece9;
+    --muted:#7c8878;
+    --lime:#c9ff3d;
+    --lime-dim:#8fb32a;
+    --amber:#ffb347;
+    --red:#ff5c5c;
+    --teal:#3dffc9;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:
+      radial-gradient(circle at 15% 0%, rgba(201,255,61,0.05), transparent 40%),
+      var(--bg);
+    color:var(--text);
+    font-family:'Space Grotesk',sans-serif;
+    padding:24px;
+    min-height:100vh;
+  }
+  .wrap{max-width:920px;margin:0 auto;}
+
+  .top{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-end;
+    flex-wrap:wrap;
+    gap:16px;
+    border-bottom:1px solid var(--line);
+    padding-bottom:18px;
+    margin-bottom:24px;
+  }
+  .brand-eyebrow{
+    font-family:'JetBrains Mono',monospace;
+    font-size:11px;
+    letter-spacing:0.18em;
+    color:var(--lime-dim);
+    text-transform:uppercase;
+    margin-bottom:4px;
+  }
+  h1{
+    margin:0;
+    font-size:28px;
+    font-weight:700;
+    letter-spacing:-0.02em;
+  }
+  .sub{color:var(--muted);font-size:13px;margin-top:6px;font-family:'JetBrains Mono',monospace;}
+
+  .status-pill{
+    display:flex;align-items:center;gap:8px;
+    font-family:'JetBrains Mono',monospace;
+    font-size:12px;
+    padding:8px 14px;
+    border-radius:100px;
+    border:1px solid var(--line);
+    background:var(--panel);
+    white-space:nowrap;
+  }
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--muted);transition:background .2s;}
+  .dot.on{background:var(--lime);box-shadow:0 0 8px var(--lime);}
+  .dot.err{background:var(--red);box-shadow:0 0 8px var(--red);}
+
+  button{
+    font-family:'Space Grotesk',sans-serif;
+    cursor:pointer;
+    border:1px solid var(--line);
+    background:var(--panel-2);
+    color:var(--text);
+    border-radius:10px;
+    padding:11px 18px;
+    font-size:14px;
+    font-weight:600;
+    transition:all .15s;
+  }
+  button:hover:not(:disabled){border-color:var(--lime-dim);color:var(--lime);}
+  button:disabled{opacity:0.35;cursor:not-allowed;}
+  button.primary{background:var(--lime);color:#101410;border-color:var(--lime);}
+  button.primary:hover:not(:disabled){background:#d9ff6b;}
+  button.ghost{background:transparent;}
+  button.danger:hover:not(:disabled){border-color:var(--red);color:var(--red);}
+
+  .grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(130px,1fr));
+    gap:2px;
+    background:var(--line);
+    border:1px solid var(--line);
+    border-radius:14px;
+    overflow:hidden;
+    margin-bottom:22px;
+  }
+  .stat{
+    background:var(--panel);
+    padding:16px 14px;
+  }
+  .stat-label{
+    font-family:'JetBrains Mono',monospace;
+    font-size:10px;
+    letter-spacing:0.1em;
+    text-transform:uppercase;
+    color:var(--muted);
+    margin-bottom:8px;
+  }
+  .stat-value{
+    font-family:'JetBrains Mono',monospace;
+    font-size:24px;
+    font-weight:700;
+    color:var(--lime);
+  }
+  .stat-value.small{font-size:16px;}
+  .stat-unit{font-size:12px;color:var(--muted);margin-left:3px;font-weight:400;}
+
+  .panel{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:14px;
+    padding:20px;
+    margin-bottom:20px;
+  }
+  .panel-title{
+    font-size:13px;
+    font-weight:700;
+    text-transform:uppercase;
+    letter-spacing:0.08em;
+    color:var(--muted);
+    margin-bottom:16px;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+  }
+
+  .faults{display:flex;flex-wrap:wrap;gap:8px;}
+  .fault-chip{
+    font-family:'JetBrains Mono',monospace;
+    font-size:11px;
+    padding:6px 10px;
+    border-radius:8px;
+    border:1px solid var(--line);
+    color:var(--muted);
+  }
+  .fault-chip.active{border-color:var(--red);color:var(--red);background:rgba(255,92,92,0.08);}
+
+  .speed-row{display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap;}
+  .speed-btn{
+    flex:1;min-width:80px;
+    text-align:center;
+    font-family:'JetBrains Mono',monospace;
+  }
+  .speed-btn .n{display:block;font-size:20px;font-weight:700;}
+  .speed-btn .l{display:block;font-size:10px;color:var(--muted);margin-top:2px;}
+  .speed-btn.active{border-color:var(--lime);background:rgba(201,255,61,0.1);color:var(--lime);}
+  .speed-btn.active .l{color:var(--lime-dim);}
+
+  .toggles{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;}
+  .toggle-row{
+    display:flex;justify-content:space-between;align-items:center;
+    background:var(--panel-2);
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:12px 14px;
+  }
+  .toggle-row .name{font-size:13px;}
+  .toggle-row .desc{font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;}
+  .switch{
+    position:relative;width:42px;height:24px;
+    border-radius:100px;background:var(--line);
+    border:1px solid var(--line);
+    cursor:pointer;flex-shrink:0;transition:background .15s;
+  }
+  .switch.on{background:var(--lime-dim);border-color:var(--lime);}
+  .switch::after{
+    content:'';position:absolute;top:2px;left:2px;
+    width:18px;height:18px;border-radius:50%;background:var(--text);
+    transition:transform .15s;
+  }
+  .switch.on::after{transform:translateX(18px);background:#101410;}
+
+  .unlock-btn{
+    width:100%;
+    padding:16px;
+    font-size:15px;
+    letter-spacing:0.02em;
+    margin-top:6px;
+  }
+
+  .console{
+    background:#080a07;
+    border:1px solid var(--line);
+    border-radius:14px;
+    padding:14px 16px;
+    height:160px;
+    overflow-y:auto;
+    font-family:'JetBrains Mono',monospace;
+    font-size:11.5px;
+    line-height:1.6;
+  }
+  .console .line{white-space:pre-wrap;word-break:break-all;}
+  .console .tx{color:var(--teal);}
+  .console .rx{color:var(--lime-dim);}
+  .console .sys{color:var(--muted);}
+  .console .err{color:var(--red);}
+
+  .foot-note{
+    font-family:'JetBrains Mono',monospace;
+    font-size:11px;
+    color:var(--muted);
+    margin-top:18px;
+    line-height:1.6;
+  }
+  code{background:var(--panel-2);padding:1px 5px;border-radius:4px;font-family:'JetBrains Mono',monospace;}
+
+  @media (prefers-reduced-motion: reduce){
+    *{transition:none !important;}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="top">
+    <div>
+      <div class="brand-eyebrow">DNTOO SCOOTER B8D1 · protocolo AT-A5</div>
+      <h1>Painel de Controle</h1>
+      <div class="sub">GATT direto via Web Bluetooth — FFE5/FFE9 (TX) · FFE0/FFE4 (RX)</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:12px;">
+      <div class="status-pill"><span class="dot" id="dot"></span><span id="statusText">desconectado</span></div>
+      <button class="primary" id="connectBtn">Conectar</button>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="stat"><div class="stat-label">Bateria</div><div class="stat-value" id="battery">—<span class="stat-unit">%</span></div></div>
+    <div class="stat"><div class="stat-label">Velocidade</div><div class="stat-value" id="speed">—<span class="stat-unit">km/h</span></div></div>
+    <div class="stat"><div class="stat-label">Distância total</div><div class="stat-value small" id="totalDist">—<span class="stat-unit">km</span></div></div>
+    <div class="stat"><div class="stat-label">Percurso atual</div><div class="stat-value small" id="tripDist">—<span class="stat-unit">km</span></div></div>
+    <div class="stat"><div class="stat-label">Tempo de percurso</div><div class="stat-value small" id="rideTime">—:—:—</div></div>
+    <div class="stat"><div class="stat-label">Marcha (gear)</div><div class="stat-value" id="gear">—</div></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">Diagnóstico de falhas</div>
+    <div class="faults" id="faults">
+      <span class="fault-chip" data-bit="0">COMUNICAÇÃO</span>
+      <span class="fault-chip" data-bit="1">SENSOR HALL</span>
+      <span class="fault-chip" data-bit="2">ACELERADOR</span>
+      <span class="fault-chip" data-bit="3">CONTROLADOR</span>
+      <span class="fault-chip" data-bit="4">SUBTENSÃO</span>
+      <span class="fault-chip" data-bit="5">FASE DO MOTOR</span>
+      <span class="fault-chip" data-bit="6">CORTE DE FREIO</span>
+      <span class="fault-chip" data-bit="7">OUTRO ERRO</span>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">Limite de velocidade <span id="limitLabel" style="color:var(--muted);font-weight:400;"></span></div>
+    <div class="speed-row" id="speedRow">
+      <button class="speed-btn" data-val="0"><span class="n">0</span><span class="l">15 km/h</span></button>
+      <button class="speed-btn" data-val="1"><span class="n">1</span><span class="l">20 km/h</span></button>
+      <button class="speed-btn" data-val="2"><span class="n">2</span><span class="l">25 km/h</span></button>
+      <button class="speed-btn" data-val="3"><span class="n">3</span><span class="l">sem limite*</span></button>
+    </div>
+    <button class="primary unlock-btn" id="unlockBtn" disabled>Aplicar modo 3 (desbloqueado) e destravar</button>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">Outros parâmetros</div>
+    <div class="toggles">
+      <div class="toggle-row">
+        <div><div class="name">Unidade</div><div class="desc">km/h ⇄ mph</div></div>
+        <div class="switch" id="tog-kmmph"></div>
+      </div>
+      <div class="toggle-row">
+        <div><div class="name">Partida assistida</div><div class="desc">助力启动 (mode)</div></div>
+        <div class="switch" id="tog-mode"></div>
+      </div>
+      <div class="toggle-row">
+        <div><div class="name">Farol</div><div class="desc">light bit</div></div>
+        <div class="switch" id="tog-light"></div>
+      </div>
+      <div class="toggle-row">
+        <div><div class="name">XH (genérico)</div><div class="desc">bit auxiliar</div></div>
+        <div class="switch" id="tog-xh"></div>
+      </div>
+      <div class="toggle-row">
+        <div><div class="name">Travar patinete</div><div class="desc">lock bit</div></div>
+        <div class="switch" id="tog-lock"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">
+      Console GATT
+      <button class="ghost" id="clearLog" style="padding:4px 10px;font-size:11px;">limpar</button>
+    </div>
+    <div class="console" id="console"></div>
+  </div>
+
+  <div class="foot-note">
+    * O campo <code>speedlimit</code> no comando de escrita tem 2 bits (0–3). O valor 3 nunca é usado pelo app oficial —
+    é uma combinação não documentada. Teste em local seguro e sem trânsito antes de confiar no limite real aplicado pelo controlador.
+    Todos os outros bits (unidade, farol, modo, xh, lock) são preservados a partir da última leitura de status antes de qualquer escrita,
+    então alternar um toggle não deveria zerar os demais — mas confira o console após cada envio.
+  </div>
+
+</div>
+
+<script>
+const SERVICE_TX = 0xffe5, CHAR_TX = 0xffe9;   // app -> patinete
+const SERVICE_RX = 0xffe0, CHAR_RX = 0xffe4;   // patinete -> app
+
+let device, server, txChar, rxChar;
+let state = { battery:null, speed:null, totalDist:null, tripDist:null, rideTime:null,
+              lock:0, kmMph:1, light:0, speedlimit:0, mode:0, xh:0, gear:0, fault:0 };
+let pollTimer = null;
+
+const $ = id => document.getElementById(id);
+const logEl = $('console');
+
+function log(msg, cls){
+  const line = document.createElement('div');
+  line.className = 'line ' + (cls||'sys');
+  const t = new Date().toLocaleTimeString('pt-BR',{hour12:false});
+  line.textContent = `[${t}] ${msg}`;
+  logEl.appendChild(line);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+function toHex(bytes){
+  return Array.from(bytes).map(b => b.toString(16).padStart(2,'0')).join(' ').toUpperCase();
+}
+
+function checksum(bytes){
+  let s = 0;
+  for (const b of bytes) s = (s + b) & 0xFF;
+  return s;
+}
+
+function setConnected(isConnected){
+  $('dot').className = 'dot' + (isConnected ? ' on' : '');
+  $('statusText').textContent = isConnected ? 'conectado' : 'desconectado';
+  $('connectBtn').textContent = isConnected ? 'Desconectar' : 'Conectar';
+  $('unlockBtn').disabled = !isConnected;
+  document.querySelectorAll('.speed-btn').forEach(b => b.disabled = !isConnected);
+  document.querySelectorAll('.switch').forEach(s => s.style.pointerEvents = isConnected ? 'auto' : 'none');
+}
+
+async function connect(){
+  try{
+    log('solicitando dispositivo (nRF/DNTOO)…');
+    device = await navigator.bluetooth.requestDevice({
+      filters: [{ namePrefix: 'DNTOO' }],
+      optionalServices: [SERVICE_TX, SERVICE_RX, 0x1800, 0x180a]
+    });
+    device.addEventListener('gattserverdisconnected', onDisconnected);
+
+    log(`conectando a ${device.name || device.id}…`);
+    server = await device.gatt.connect();
+
+    const svcTx = await server.getPrimaryService(SERVICE_TX);
+    txChar = await svcTx.getCharacteristic(CHAR_TX);
+
+    const svcRx = await server.getPrimaryService(SERVICE_RX);
+    rxChar = await svcRx.getCharacteristic(CHAR_RX);
+
+    await rxChar.startNotifications();
+    rxChar.addEventListener('characteristicvaluechanged', onNotify);
+
+    setConnected(true);
+    log('conectado. iniciando leitura periódica.', 'sys');
+    requestStatus();
+    pollTimer = setInterval(requestStatus, 1500);
+  } catch(err){
+    log('erro ao conectar: ' + err.message, 'err');
+  }
+}
+
+function disconnect(){
+  if (pollTimer) clearInterval(pollTimer);
+  if (device && device.gatt.connected) device.gatt.disconnect();
+}
+
+function onDisconnected(){
+  setConnected(false);
+  if (pollTimer) clearInterval(pollTimer);
+  log('dispositivo desconectado.', 'err');
+}
+
+async function writeBytes(bytes){
+  const buf = Uint8Array.from(bytes);
+  log('TX  ' + toHex(buf), 'tx');
+  try{
+    if (txChar.writeValueWithoutResponse) {
+      await txChar.writeValueWithoutResponse(buf);
+    } else {
+      await txChar.writeValue(buf);
+    }
+  } catch(err){
+    log('erro ao escrever: ' + err.message, 'err');
+  }
+}
+
+function requestStatus(){
+  // A5 04 01 AA — comando fixo de leitura
+  writeBytes([0xA5, 0x04, 0x01, 0xAA]);
+}
+
+let prevStatusByte = null;
+let prevFaultByte = null;
+let notifyCount = 0;
+let firstNotifyAt = null;
+
+const BIT_NAMES = ['lock','kmMph','light','speedlimitBit','mode','xh','gear_hi','gear_lo'];
+
+function decodeStatus(b){
+  return {
+    lock: (b>>7)&1, kmMph: (b>>6)&1, light: (b>>5)&1,
+    speedlimitBit: (b>>4)&1, mode: (b>>3)&1, xh: (b>>2)&1, gear: b & 0b11
+  };
+}
+
+function onNotify(event){
+  const dv = event.target.value;
+  const bytes = new Uint8Array(dv.buffer);
+  notifyCount++;
+  const now = performance.now();
+  if (firstNotifyAt === null) firstNotifyAt = now;
+  const msSinceFirst = Math.round(now - firstNotifyAt);
+
+  log(`RX #${notifyCount} (+${msSinceFirst}ms)  ` + toHex(bytes), 'rx');
+  if (bytes.length < 15) return;
+
+  const battery = Math.min(100, dv.getUint8(3));
+  const speed = dv.getUint16(4, false) / 10;
+  const totalDist = dv.getUint16(6, false) / 10;
+  const tripDist = dv.getUint16(8, false) / 10;
+  const rideSeconds = dv.getUint16(10, false);
+  const statusByte = dv.getUint8(12);
+  const faultByte = dv.getUint8(13);
+  const checksumByte = dv.getUint8(14);
+
+  // integrity check against documented formula
+  let sum = 0;
+  for (let i = 0; i <= 13; i++) sum = (sum + dv.getUint8(i)) & 0xFF;
+  if (sum !== checksumByte) {
+    log(`⚠ checksum não bate: calculado 0x${sum.toString(16)} vs recebido 0x${checksumByte.toString(16)}`, 'err');
+  }
+
+  // flag any bit-level transition vs previous packet, with human labels
+  if (prevStatusByte !== null && prevStatusByte !== statusByte) {
+    const before = decodeStatus(prevStatusByte);
+    const after = decodeStatus(statusByte);
+    const changes = [];
+    for (const k of Object.keys(after)) {
+      if (before[k] !== after[k]) changes.push(`${k}: ${before[k]} → ${after[k]}`);
+    }
+    log(`🔄 status byte mudou (0x${prevStatusByte.toString(16)} → 0x${statusByte.toString(16)}) após ${msSinceFirst}ms desde a 1ª notificação — ${changes.join(', ')}`, 'sys');
+  }
+  if (prevFaultByte !== null && prevFaultByte !== faultByte) {
+    log(`🔄 fault byte mudou (0x${prevFaultByte.toString(16)} → 0x${faultByte.toString(16)})`, 'err');
+  }
+  prevStatusByte = statusByte;
+  prevFaultByte = faultByte;
+
+  state.battery = battery;
+  state.speed = speed;
+  state.totalDist = totalDist;
+  state.tripDist = tripDist;
+  state.rideTime = rideSeconds;
+  state.lock     = (statusByte >> 7) & 1;
+  state.kmMph    = (statusByte >> 6) & 1;
+  state.light    = (statusByte >> 5) & 1;
+  state.speedlimitStatusBit = (statusByte >> 4) & 1;
+  state.mode     = (statusByte >> 3) & 1;
+  state.xh       = (statusByte >> 2) & 1;
+  state.gear     = statusByte & 0b11;
+  state.fault    = faultByte;
+
+  renderState();
+}
+
+function fmtTime(totalSeconds){
+  const h = Math.floor(totalSeconds/3600).toString().padStart(2,'0');
+  const m = Math.floor((totalSeconds%3600)/60).toString().padStart(2,'0');
+  const s = Math.floor(totalSeconds%60).toString().padStart(2,'0');
+  return `${h}:${m}:${s}`;
+}
+
+function renderState(){
+  $('battery').innerHTML = state.battery + '<span class="stat-unit">%</span>';
+  $('speed').innerHTML = state.speed.toFixed(1) + '<span class="stat-unit">' + (state.kmMph ? 'km/h' : 'mph') + '</span>';
+  $('totalDist').innerHTML = state.totalDist.toFixed(1) + '<span class="stat-unit">km</span>';
+  $('tripDist').innerHTML = state.tripDist.toFixed(1) + '<span class="stat-unit">km</span>';
+  $('rideTime').textContent = fmtTime(state.rideTime);
+  $('gear').textContent = state.gear;
+
+  document.querySelectorAll('.fault-chip').forEach(chip => {
+    const bit = Number(chip.dataset.bit);
+    chip.classList.toggle('active', !!((state.fault >> bit) & 1));
+  });
+
+  document.querySelectorAll('.speed-btn').forEach(btn => {
+    btn.classList.toggle('active', Number(btn.dataset.val) === state.speedlimit);
+  });
+  $('limitLabel').textContent = '· modo atual enviado: ' + state.speedlimit;
+
+  $('tog-kmmph').classList.toggle('on', !!state.kmMph);
+  $('tog-mode').classList.toggle('on', !!state.mode);
+  $('tog-light').classList.toggle('on', !!state.light);
+  $('tog-xh').classList.toggle('on', !!state.xh);
+  $('tog-lock').classList.toggle('on', !!state.lock);
+}
+
+function buildSettingCommand(){
+  let flags = 0x80; // bit fixo
+  flags |= (state.speedlimit & 0b11) << 5;
+  flags |= (state.kmMph & 1) << 4;
+  flags |= (state.mode & 1) << 3;
+  flags |= (state.xh & 1) << 2;
+  flags |= (state.lock & 1) << 1;
+  flags |= (state.light & 1);
+
+  const header = [0xA5, 0x05, 0x02, flags];
+  const cs = checksum(header);
+  return [...header, cs];
+}
+
+function sendSetting(){
+  const pkt = buildSettingCommand();
+  writeBytes(pkt);
+}
+
+// -- UI wiring --
+$('connectBtn').addEventListener('click', () => {
+  if (device && device.gatt.connected) disconnect();
+  else connect();
+});
+
+$('clearLog').addEventListener('click', () => logEl.innerHTML = '');
+
+document.querySelectorAll('.speed-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    state.speedlimit = Number(btn.dataset.val);
+    renderState();
+    sendSetting();
+  });
+});
+
+$('unlockBtn').addEventListener('click', () => {
+  state.speedlimit = 3;
+  state.lock = 0;
+  renderState();
+  sendSetting();
+});
+
+function wireToggle(id, key){
+  $(id).addEventListener('click', () => {
+    state[key] = state[key] ? 0 : 1;
+    renderState();
+    sendSetting();
+  });
+}
+wireToggle('tog-kmmph','kmMph');
+wireToggle('tog-mode','mode');
+wireToggle('tog-light','light');
+wireToggle('tog-xh','xh');
+wireToggle('tog-lock','lock');
+
+if (!navigator.bluetooth) {
+  log('Web Bluetooth não disponível neste navegador. Use Chrome/Edge no desktop ou Android.', 'err');
+  $('connectBtn').disabled = true;
+}
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  });
+}
+</script>
+</body>
+</html>
