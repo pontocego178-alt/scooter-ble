@@ -1,4 +1,4 @@
-const CACHE = 'scooter-ble-v1';
+const CACHE = 'scooter-ble-v2'; // bump força descarte do cache antigo
 const ASSETS = ['/index.html', '/manifest.json', '/icon-192.png', '/icon-512.png'];
 
 self.addEventListener('install', (event) => {
@@ -15,8 +15,15 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
+// network-first: tenta buscar a versão mais nova sempre; só usa cache se estiver offline
 self.addEventListener('fetch', (event) => {
   event.respondWith(
-    caches.match(event.request).then((cached) => cached || fetch(event.request))
+    fetch(event.request)
+      .then((response) => {
+        const clone = response.clone();
+        caches.open(CACHE).then((cache) => cache.put(event.request, clone));
+        return response;
+      })
+      .catch(() => caches.match(event.request))
   );
 });
