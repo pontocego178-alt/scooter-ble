@@ -309,7 +309,10 @@
   <div class="panel">
     <div class="panel-title">
       Console GATT
-      <button class="ghost" id="clearLog" style="padding:4px 10px;font-size:11px;">limpar</button>
+      <span style="display:flex;gap:8px;">
+        <button class="ghost" id="saveLog" style="padding:4px 10px;font-size:11px;">salvar log</button>
+        <button class="ghost" id="clearLog" style="padding:4px 10px;font-size:11px;">limpar</button>
+      </span>
     </div>
     <div class="console" id="console"></div>
   </div>
@@ -334,14 +337,39 @@ let pollTimer = null;
 
 const $ = id => document.getElementById(id);
 const logEl = $('console');
+const logHistory = []; // { t: Date, cls, msg } — kept in memory for export
 
 function log(msg, cls){
   const line = document.createElement('div');
   line.className = 'line ' + (cls||'sys');
-  const t = new Date().toLocaleTimeString('pt-BR',{hour12:false});
+  const now = new Date();
+  const t = now.toLocaleTimeString('pt-BR',{hour12:false});
   line.textContent = `[${t}] ${msg}`;
   logEl.appendChild(line);
   logEl.scrollTop = logEl.scrollHeight;
+  logHistory.push({ t: now, cls: cls || 'sys', msg });
+}
+
+function downloadLog(){
+  if (logHistory.length === 0){
+    log('nada pra salvar ainda.', 'sys');
+    return;
+  }
+  const header = `DNTOO Scooter BLE — log de sessão\nGerado em ${new Date().toLocaleString('pt-BR')}\nDispositivo: ${device ? (device.name || device.id) : '(não conectado)'}\n${'='.repeat(50)}\n`;
+  const body = logHistory
+    .map(({t, cls, msg}) => `[${t.toISOString()}] [${cls.toUpperCase()}] ${msg}`)
+    .join('\n');
+  const blob = new Blob([header + body], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  a.href = url;
+  a.download = `scooter-ble-log_${stamp}.txt`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  log(`log salvo (${logHistory.length} linhas).`, 'sys');
 }
 
 function toHex(bytes){
@@ -593,7 +621,11 @@ $('connectBtn').addEventListener('click', () => {
   else connect();
 });
 
-$('clearLog').addEventListener('click', () => logEl.innerHTML = '');
+$('saveLog').addEventListener('click', downloadLog);
+$('clearLog').addEventListener('click', () => {
+  logEl.innerHTML = '';
+  logHistory.length = 0;
+});
 
 document.querySelectorAll('.speed-btn').forEach(btn => {
   btn.addEventListener('click', () => {
