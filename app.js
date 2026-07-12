@@ -44,6 +44,12 @@ let notifyCount = 0, firstNotifyAt = null;
 let holdTimer = null;
 let pendingChange = null; // { fields:{k:v,...}, sentAt }
 
+// --- Diagnóstico de desbloqueio -----------------------------------------
+const sessionModeMax = {}; // maior velocidade observada por modo, na sessão atual
+RIDING_MODES.forEach(m => sessionModeMax[m.key] = 0);
+let autoHoldOnLivre = (localStorage.getItem('scooterble_autohold_livre') ?? '1') === '1';
+let sweepRunning = false;
+
 const $ = (id) => document.getElementById(id);
 
 /* ---------------------------------------------------------------------- */
@@ -93,7 +99,7 @@ function setConnected(isConnected) {
   $('statusText').textContent = isConnected ? 'conectado' : 'desconectado';
   $('connectBtn').textContent = isConnected ? 'Desconectar' : 'Conectar';
   $('connectBtn').classList.toggle('off', isConnected);
-  ['unlockBtn', 'holdBtn', 'pausePollBtn', 'tripRecBtn'].forEach(id => { const e = $(id); if (e) e.disabled = !isConnected; });
+  ['unlockBtn', 'holdBtn', 'pausePollBtn', 'tripRecBtn', 'sweepBtn'].forEach(id => { const e = $(id); if (e) e.disabled = !isConnected; });
   document.querySelectorAll('.seg-btn').forEach(b => b.disabled = !isConnected);
   document.querySelectorAll('.switch').forEach(s => s.style.pointerEvents = isConnected ? 'auto' : 'none');
 }
@@ -119,6 +125,8 @@ async function connect() {
     rxChar.addEventListener('characteristicvaluechanged', onNotify);
 
     setConnected(true);
+    RIDING_MODES.forEach(m => sessionModeMax[m.key] = 0);
+    renderModeMaxTable();
     log('conectado. notificações chegam sozinhas — leitura automática desativada por padrão.', 'sys');
     requestStatus();
     pollPaused = true;
@@ -253,10 +261,12 @@ function onNotify(event) {
     const allMatch = Object.keys(fields).every(k => decoded[k] === fields[k]);
     if (allMatch) {
       log(`✅ controlador confirmou ${Object.entries(fields).map(([k, v]) => `${k}=${v}`).join(', ')} (${Math.round(elapsed)}ms)`, 'sys');
+      if ('speedlimit' in fields) showUnlockBanner('ok', `Confirmado: speedlimit=${fields.speedlimit}`);
       pendingChange = null;
       Object.assign(state, decoded);
     } else if (elapsed > PENDING_WINDOW_MS) {
-      log(`⚠ comando não confirmado após ${PENDING_WINDOW_MS}ms — sincronizando com o real reportado pelo controlador.`, 'err');
+      log(`⚠ comando não confirmado após ${PENDING_WINDOW_MS}ms — controlador reporta speedlimit=${decoded.speedlimit}, mode=${decoded.mode}. Sincronizando com o real.`, 'err');
+      if ('speedlimit' in fields) showUnlockBanner('warn', `Rejeitado: pedi speedlimit=${fields.speedlimit}, controlador ficou em ${decoded.speedlimit}`);
       pendingChange = null;
       Object.assign(state, decoded);
     } else {
@@ -266,8 +276,57 @@ function onNotify(event) {
     Object.assign(state, decoded);
   }
 
+  trackModeMax();
   onTripSample();
   renderState();
+}
+
+/* ---------------------------------------------------------------------- */
+/* Diagnóstico de desbloqueio                                             */
+/* ---------------------------------------------------------------------- */
+function showUnlockBanner(kind, text) {
+  const el = $('unlockBanner');
+  if (!el) return;
+  el.textContent = text;
+  el.className = 'panel-note unlock-banner ' + kind;
+}
+
+function trackModeMax() {
+  const mk = currentModeKey();
+  if (mk && state.speed !== null) {
+    sessionModeMax[mk] = Math.max(sessionModeMax[mk] || 0, state.speed);
+    renderModeMaxTable();
+  }
+}
+
+function renderModeMaxTable() {
+  const el = $('modeMaxTable');
+  if (!el) return;
+  el.innerHTML = RIDING_MODES.map(m =>
+    `<div class="map-stat"><div class="v">${sessionModeMax[m.key].toFixed(1)}</div><div class="l">${m.label}</div></div>`
+  ).join('');
+}
+
+// Varia mode/xh mantendo speedlimit=3 (Livre), pra descobrir se algum bit
+// vizinho realmente afeta o limite físico de velocidade. Só usa bits já
+// mapeados — nenhum byte/opcode novo é inventado aqui.
+async function runModeSweep() {
+  if (sweepRunning || !txChar) return;
+  sweepRunning = true;
+  const combos = [
+    { mode: 0, xh: 0 }, { mode: 1, xh: 0 }, { mode: 0, xh: 1 }, { mode: 1, xh: 1 },
+  ];
+  log('🧪 iniciando varredura: speedlimit=3 fixo, variando mode/xh. Ande em local seguro e observe a velocidade máxima real em cada etapa.', 'sys');
+  for (let i = 0; i < combos.length; i++) {
+    if (!device || !device.gatt.connected) break;
+    state.speedlimit = 3; state.mode = combos[i].mode; state.xh = combos[i].xh;
+    renderState();
+    log(`🧪 combinação ${i + 1}/${combos.length}: mode=${combos[i].mode}, xh=${combos[i].xh} — observe por ~8s.`, 'sys');
+    sendSetting(['speedlimit', 'mode', 'xh']);
+    await new Promise(r => setTimeout(r, 8000));
+  }
+  log('🧪 varredura finalizada. Compare a "Vel. máx. na sessão" de cada combinação e me diga qual (se algum) realmente destravou.', 'sys');
+  sweepRunning = false;
 }
 
 /* ---------------------------------------------------------------------- */
@@ -614,14 +673,29 @@ function initApp() {
       if (!m) return;
       state.speedlimit = m.speedlimit; state.mode = m.mode;
       renderState();
+      showUnlockBanner('pending', `Enviando speedlimit=${m.speedlimit}, mode=${m.mode}…`);
       sendSetting(['speedlimit', 'mode']);
+      if (m.key === 'livre' && autoHoldOnLivre && !holdTimer) {
+        log('🔁 modo Livre selecionado — ativando anti-revert automaticamente (o controlador pode reverter o comando sozinho).', 'sys');
+        startHold();
+      }
     });
   });
 
   $('unlockBtn').addEventListener('click', () => {
     state.speedlimit = 3; state.lock = 0;
     renderState();
+    showUnlockBanner('pending', 'Enviando speedlimit=3, lock=0…');
     sendSetting(['speedlimit', 'lock']);
+    if (autoHoldOnLivre && !holdTimer) startHold();
+  });
+
+  $('sweepBtn').addEventListener('click', runModeSweep);
+
+  $('tog-autohold').addEventListener('click', () => {
+    autoHoldOnLivre = !autoHoldOnLivre;
+    localStorage.setItem('scooterble_autohold_livre', autoHoldOnLivre ? '1' : '0');
+    $('tog-autohold').classList.toggle('on', autoHoldOnLivre);
   });
 
   $('holdBtn').addEventListener('click', () => { if (holdTimer) stopHold(); else startHold(); });
@@ -669,6 +743,8 @@ function initApp() {
 
   renderState();
   renderHistorico();
+  renderModeMaxTable();
+  $('tog-autohold').classList.toggle('on', autoHoldOnLivre);
   refreshAmbientTemp(true);
   updateTripButtons();
 

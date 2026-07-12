@@ -67,6 +67,22 @@
         <button class="btn ghost" id="pausePollBtn" disabled style="margin-top:8px;">Pausar leitura automática</button>
       </div>
 
+      <div class="section-title">Diagnóstico de desbloqueio</div>
+      <div class="panel">
+        <div class="panel-note unlock-banner" id="unlockBanner">nenhum comando de desbloqueio enviado ainda nesta sessão.</div>
+
+        <div class="panel-note" style="margin:0 0 10px;"><b style="color:var(--text);">Vel. máx. observada nesta sessão, por modo</b> — ande em cada modo e compare aqui. Se "Livre" não mostrar um número maior que "Sport", o controlador não está de fato aplicando o valor 3.</div>
+        <div class="map-stats" id="modeMaxTable" style="margin-bottom:14px;"></div>
+
+        <div class="toggle-row" style="margin-bottom:10px;">
+          <div><div class="name">Anti-revert automático no Livre</div><div class="desc">liga "manter comando" ao escolher Livre</div></div>
+          <div class="switch on" id="tog-autohold"></div>
+        </div>
+
+        <button class="btn ghost" id="sweepBtn" disabled>Testar variações (mode/xh) mantendo Livre</button>
+        <div class="panel-note">Isso mantém <code>speedlimit=3</code> fixo e alterna <code>mode</code>/<code>xh</code> a cada 8s — só usando bits já mapeados, nenhum comando novo. Ande com o patinete durante o teste e veja em qual combinação (se alguma) a velocidade real sobe. Fica registrado no console.</div>
+      </div>
+
       <div class="section-title">Viagem</div>
       <div class="panel">
         <button class="btn primary trip-rec-btn" id="tripRecBtn" disabled>● Iniciar viagem</button>
