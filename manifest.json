@@ -1,7 +1,8 @@
 {
+  "id": "/index.html",
   "name": "DNTOO Scooter Control",
   "short_name": "Scooter BLE",
-  "description": "Painel de controle BLE para patinete DNTOO — leitura de status e desbloqueio de limite de velocidade",
+  "description": "Painel de controle BLE para patinete DNTOO — status em tempo real, mapa de rota, histórico de viagens e ajustes via GATT",
   "start_url": "/index.html",
   "scope": "/",
   "display": "standalone",
