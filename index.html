@@ -278,6 +278,7 @@
       <button class="speed-btn" data-val="3"><span class="n">3</span><span class="l">sem limite*</span></button>
     </div>
     <button class="primary unlock-btn" id="unlockBtn" disabled>Aplicar modo 3 (desbloqueado) e destravar</button>
+    <button class="ghost unlock-btn" id="holdBtn" disabled style="margin-top:8px;">Manter comando (anti auto-revert)</button>
   </div>
 
   <div class="panel">
@@ -387,6 +388,7 @@ function setConnected(isConnected){
   $('statusText').textContent = isConnected ? 'conectado' : 'desconectado';
   $('connectBtn').textContent = isConnected ? 'Desconectar' : 'Conectar';
   $('unlockBtn').disabled = !isConnected;
+  $('holdBtn').disabled = !isConnected;
   document.querySelectorAll('.speed-btn').forEach(b => b.disabled = !isConnected);
   document.querySelectorAll('.switch').forEach(s => s.style.pointerEvents = isConnected ? 'auto' : 'none');
 }
@@ -429,6 +431,7 @@ function disconnect(){
 function onDisconnected(){
   setConnected(false);
   if (pollTimer) clearInterval(pollTimer);
+  stopHold();
   log('dispositivo desconectado.', 'err');
 }
 
@@ -515,7 +518,8 @@ function onNotify(event){
     speedlimitStatusBit: (statusByte >> 4) & 1,
     mode: (statusByte >> 3) & 1,
     xh: (statusByte >> 2) & 1,
-    gear: statusByte & 0b11
+    gear: statusByte & 0b11,
+    speedlimit: statusByte & 0b11 // alias: gear is our best read-side proxy for the write-side speedlimit field
   };
 
   state.battery = battery;
@@ -525,9 +529,8 @@ function onNotify(event){
   state.rideTime = rideSeconds;
   state.fault = faultByte;
 
-  // the field we WRITE (speedlimit) isn't the same name as what we READ back (gear) —
-  // map write-field -> read-field so confirmation actually compares the right bits
-  const CONFIRM_FIELD = { speedlimit: 'gear', lock: 'lock', kmMph: 'kmMph', mode: 'mode', xh: 'xh', light: 'light' };
+  // the field we WRITE (speedlimit) and the field we READ back are now the same key (aliased above)
+  const CONFIRM_FIELD = { speedlimit: 'speedlimit', lock: 'lock', kmMph: 'kmMph', mode: 'mode', xh: 'xh', light: 'light' };
 
   if (pendingChange) {
     const elapsed = performance.now() - pendingChange.sentAt;
@@ -606,6 +609,31 @@ function buildSettingCommand(){
   return [...header, cs];
 }
 
+let holdTimer = null;
+const HOLD_INTERVAL_MS = 400;
+
+function startHold(){
+  if (holdTimer) return;
+  holdTimer = setInterval(() => {
+    const pkt = buildSettingCommand();
+    log('🔁 reafirmando  ' + toHex(pkt), 'sys');
+    const buf = Uint8Array.from(pkt);
+    if (txChar) {
+      (txChar.writeValueWithoutResponse ? txChar.writeValueWithoutResponse(buf) : txChar.writeValue(buf)).catch(()=>{});
+    }
+  }, HOLD_INTERVAL_MS);
+  log(`🔁 modo "manter comando" ativado (reenvio a cada ${HOLD_INTERVAL_MS}ms)`, 'sys');
+  $('holdBtn').textContent = 'Parar de reafirmar';
+  $('holdBtn').classList.add('primary');
+}
+
+function stopHold(){
+  if (holdTimer) { clearInterval(holdTimer); holdTimer = null; }
+  log('🔁 modo "manter comando" desativado', 'sys');
+  $('holdBtn').textContent = 'Manter comando (anti auto-revert)';
+  $('holdBtn').classList.remove('primary');
+}
+
 function sendSetting(changedField){
   if (changedField) {
     pendingChange = { field: changedField, value: state[changedField], sentAt: performance.now() };
@@ -640,6 +668,10 @@ $('unlockBtn').addEventListener('click', () => {
   state.lock = 0;
   renderState();
   sendSetting('lock');
+});
+
+$('holdBtn').addEventListener('click', () => {
+  if (holdTimer) stopHold(); else startHold();
 });
 
 function wireToggle(id, key){
