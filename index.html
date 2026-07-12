@@ -423,10 +423,29 @@ function requestStatus(){
   writeBytes([0xA5, 0x04, 0x01, 0xAA]);
 }
 
+let prevStatusByte = null;
+let prevFaultByte = null;
+let notifyCount = 0;
+let firstNotifyAt = null;
+
+const BIT_NAMES = ['lock','kmMph','light','speedlimitBit','mode','xh','gear_hi','gear_lo'];
+
+function decodeStatus(b){
+  return {
+    lock: (b>>7)&1, kmMph: (b>>6)&1, light: (b>>5)&1,
+    speedlimitBit: (b>>4)&1, mode: (b>>3)&1, xh: (b>>2)&1, gear: b & 0b11
+  };
+}
+
 function onNotify(event){
   const dv = event.target.value;
   const bytes = new Uint8Array(dv.buffer);
-  log('RX  ' + toHex(bytes), 'rx');
+  notifyCount++;
+  const now = performance.now();
+  if (firstNotifyAt === null) firstNotifyAt = now;
+  const msSinceFirst = Math.round(now - firstNotifyAt);
+
+  log(`RX #${notifyCount} (+${msSinceFirst}ms)  ` + toHex(bytes), 'rx');
   if (bytes.length < 15) return;
 
   const battery = Math.min(100, dv.getUint8(3));
@@ -436,20 +455,76 @@ function onNotify(event){
   const rideSeconds = dv.getUint16(10, false);
   const statusByte = dv.getUint8(12);
   const faultByte = dv.getUint8(13);
+  const checksumByte = dv.getUint8(14);
+
+  // integrity check against documented formula
+  let sum = 0;
+  for (let i = 0; i <= 13; i++) sum = (sum + dv.getUint8(i)) & 0xFF;
+  if (sum !== checksumByte) {
+    log(`⚠ checksum não bate: calculado 0x${sum.toString(16)} vs recebido 0x${checksumByte.toString(16)}`, 'err');
+  }
+
+  // flag any bit-level transition vs previous packet, with human labels
+  if (prevStatusByte !== null && prevStatusByte !== statusByte) {
+    const before = decodeStatus(prevStatusByte);
+    const after = decodeStatus(statusByte);
+    const changes = [];
+    for (const k of Object.keys(after)) {
+      if (before[k] !== after[k]) changes.push(`${k}: ${before[k]} → ${after[k]}`);
+    }
+    log(`🔄 status byte mudou (0x${prevStatusByte.toString(16)} → 0x${statusByte.toString(16)}) após ${msSinceFirst}ms desde a 1ª notificação — ${changes.join(', ')}`, 'sys');
+  }
+  if (prevFaultByte !== null && prevFaultByte !== faultByte) {
+    log(`🔄 fault byte mudou (0x${prevFaultByte.toString(16)} → 0x${faultByte.toString(16)})`, 'err');
+  }
+  prevStatusByte = statusByte;
+  prevFaultByte = faultByte;
+
+  const decoded = {
+    lock: (statusByte >> 7) & 1,
+    kmMph: (statusByte >> 6) & 1,
+    light: (statusByte >> 5) & 1,
+    speedlimitStatusBit: (statusByte >> 4) & 1,
+    mode: (statusByte >> 3) & 1,
+    xh: (statusByte >> 2) & 1,
+    gear: statusByte & 0b11
+  };
 
   state.battery = battery;
   state.speed = speed;
   state.totalDist = totalDist;
   state.tripDist = tripDist;
   state.rideTime = rideSeconds;
-  state.lock     = (statusByte >> 7) & 1;
-  state.kmMph    = (statusByte >> 6) & 1;
-  state.light    = (statusByte >> 5) & 1;
-  state.speedlimitStatusBit = (statusByte >> 4) & 1;
-  state.mode     = (statusByte >> 3) & 1;
-  state.xh       = (statusByte >> 2) & 1;
-  state.gear     = statusByte & 0b11;
-  state.fault    = faultByte;
+  state.fault = faultByte;
+
+  // the field we WRITE (speedlimit) isn't the same name as what we READ back (gear) —
+  // map write-field -> read-field so confirmation actually compares the right bits
+  const CONFIRM_FIELD = { speedlimit: 'gear', lock: 'lock', kmMph: 'kmMph', mode: 'mode', xh: 'xh', light: 'light' };
+
+  if (pendingChange) {
+    const elapsed = performance.now() - pendingChange.sentAt;
+    const field = pendingChange.field;
+    const confirmKey = CONFIRM_FIELD[field] || field;
+    const deviceValue = decoded[confirmKey];
+
+    if (deviceValue === pendingChange.value) {
+      log(`✅ controlador confirmou "${field}" = ${pendingChange.value} (${Math.round(elapsed)}ms)`, 'sys');
+      pendingChange = null;
+      Object.assign(state, decoded);
+    } else if (elapsed > PENDING_WINDOW_MS) {
+      log(`⚠ comando "${field}"=${pendingChange.value} não confirmado após ${PENDING_WINDOW_MS}ms — controlador reporta ${confirmKey}=${deviceValue}. Sincronizando com o real.`, 'err');
+      pendingChange = null;
+      Object.assign(state, decoded);
+    } else {
+      // still inside the grace window and values don't match yet — keep optimistic UI,
+      // sync every field EXCEPT the one being contested
+      for (const k of Object.keys(decoded)) {
+        if (k !== confirmKey) state[k] = decoded[k];
+      }
+    }
+  } else {
+    Object.assign(state, decoded);
+  }
 
   renderState();
 }
@@ -486,6 +561,9 @@ function renderState(){
   $('tog-lock').classList.toggle('on', !!state.lock);
 }
 
+let pendingChange = null; // { field, value, sentAt }
+const PENDING_WINDOW_MS = 1200;
+
 function buildSettingCommand(){
   let flags = 0x80; // bit fixo
   flags |= (state.speedlimit & 0b11) << 5;
@@ -500,7 +578,11 @@ function buildSettingCommand(){
   return [...header, cs];
 }
 
-function sendSetting(){
+function sendSetting(changedField){
+  if (changedField) {
+    pendingChange = { field: changedField, value: state[changedField], sentAt: performance.now() };
+    log(`⏳ segurando sincronização de "${changedField}" por ${PENDING_WINDOW_MS}ms até o controlador confirmar`, 'sys');
+  }
   const pkt = buildSettingCommand();
   writeBytes(pkt);
 }
@@ -517,7 +599,7 @@ document.querySelectorAll('.speed-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     state.speedlimit = Number(btn.dataset.val);
     renderState();
-    sendSetting();
+    sendSetting('speedlimit');
   });
 });
 
@@ -525,14 +607,14 @@ $('unlockBtn').addEventListener('click', () => {
   state.speedlimit = 3;
   state.lock = 0;
   renderState();
-  sendSetting();
+  sendSetting('lock');
 });
 
 function wireToggle(id, key){
   $(id).addEventListener('click', () => {
     state[key] = state[key] ? 0 : 1;
     renderState();
-    sendSetting();
+    sendSetting(key);
   });
 }
 wireToggle('tog-kmmph','kmMph');
